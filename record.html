@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>記録する - 勉強状況管理アプリ</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-size: 1rem;
+    font-family: inherit;
+    resize: vertical;
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-title">勉強状況管理アプリ</div>
+  <nav class="app-nav" id="appNav"></nav>
+  <div class="app-user" id="appUser" style="display:none;">
+    <span id="currentUserName"></span>
+    <a href="#" id="logoutLink">ログアウト</a>
+  </div>
+</header>
+
+<main class="container">
+
+  <div class="card" id="readonlyBanner" style="display:none;">
+    <p class="muted"><span id="readonlyStudentName"></span>さんの記録を閲覧中</p>
+  </div>
+
+  <div class="card" id="errorCard" style="display:none;">
+    <p>ユーザーが指定されていません。</p>
+  </div>
+
+  <div id="pageBody" style="display:none;">
+
+    <div class="card">
+      <label for="dateInput">日付</label>
+      <input type="date" id="dateInput">
+    </div>
+
+    <div class="card">
+      <h2>学習時間ログ</h2>
+      <ul class="list" id="recordList"></ul>
+      <div id="addRecordForm">
+        <label for="subjectSelect">科目</label>
+        <select id="subjectSelect"></select>
+        <label for="minutesInput">分数</label>
+        <input type="number" id="minutesInput" min="1" placeholder="例: 30">
+        <button id="addRecordBtn">追加</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>今日学習した内容</h2>
+      <textarea id="studiedContent" rows="4"></textarea>
+
+      <h2>見つかった課題・わからなかったポイント</h2>
+      <textarea id="issues" rows="4"></textarea>
+
+      <h2>先生への質問</h2>
+      <textarea id="question" rows="3"></textarea>
+
+      <h2>その他</h2>
+      <textarea id="other" rows="3"></textarea>
+
+      <button id="saveBtn">保存する</button>
+    </div>
+
+  </div>
+
+</main>
+
+<script type="module">
+  import { StudyData } from './js/data.js';
+  await StudyData.ready;
+
+  const params = new URLSearchParams(window.location.search);
+  const dateParam = params.get('date');
+  const studentParam = params.get('student');
+  const readonly = params.get('readonly') === '1';
+
+  const currentUser = StudyData.getCurrentUser();
+  if (!readonly && !currentUser) {
+    window.location.href = 'index.html';
+  }
+
+  const targetUser = studentParam || currentUser;
+  const date = dateParam || StudyData.todayStr();
+
+  // ヘッダー
+  const appNav = document.getElementById('appNav');
+  const appUser = document.getElementById('appUser');
+  if (currentUser) {
+    const userData = await StudyData.getUserData(currentUser);
+    document.getElementById('currentUserName').textContent = currentUser;
+    appUser.style.display = 'flex';
+    if (userData && userData.role === 'teacher') {
+      appNav.innerHTML =
+        '<a href="calendar.html">カレンダー</a>' +
+        '<a href="teacher.html" class="active">担当生徒</a>' +
+        '<a href="settings.html">設定</a>';
+    } else {
+      appNav.innerHTML =
+        '<a href="calendar.html">カレンダー</a>' +
+        '<a href="record.html" class="active">記録する</a>' +
+        '<a href="settings.html">設定</a>';
+    }
+    document.getElementById('logoutLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      StudyData.logout();
+      window.location.href = 'index.html';
+    });
+  }
+
+  if (!targetUser) {
+    document.getElementById('errorCard').style.display = 'block';
+  } else {
+    document.getElementById('pageBody').style.display = 'block';
+
+    if (readonly) {
+      document.getElementById('readonlyBanner').style.display = 'block';
+      document.getElementById('readonlyStudentName').textContent = targetUser;
+      document.getElementById('addRecordForm').style.display = 'none';
+      ['studiedContent', 'issues', 'question', 'other'].forEach((id) => {
+        document.getElementById(id).disabled = true;
+      });
+      document.getElementById('saveBtn').style.display = 'none';
+    }
+
+    // 日付
+    const dateInput = document.getElementById('dateInput');
+    dateInput.value = date;
+    dateInput.addEventListener('change', () => {
+      const newParams = new URLSearchParams(window.location.search);
+      newParams.set('date', dateInput.value);
+      window.location.href = 'record.html?' + newParams.toString();
+    });
+
+    // 科目プルダウン
+    async function loadSubjects() {
+      const subjects = await StudyData.getSubjects(targetUser);
+      const select = document.getElementById('subjectSelect');
+      select.innerHTML = '';
+      subjects.forEach((s) => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        select.appendChild(opt);
+      });
+    }
+
+    // エントリー読み込み・表示
+    let entry;
+
+    function renderRecordList() {
+      const list = document.getElementById('recordList');
+      list.innerHTML = '';
+      const records = entry.records || [];
+      if (records.length === 0) {
+        const li = document.createElement('li');
+        li.className = 'muted';
+        li.textContent = 'まだ記録がありません';
+        list.appendChild(li);
+        return;
+      }
+      records.forEach((r) => {
+        const li = document.createElement('li');
+        const subjectSpan = document.createElement('span');
+        subjectSpan.className = 'tag';
+        subjectSpan.textContent = r.subject;
+        const minutesSpan = document.createElement('span');
+        minutesSpan.textContent = r.minutes + '分';
+        li.appendChild(subjectSpan);
+        li.appendChild(minutesSpan);
+        list.appendChild(li);
+      });
+    }
+
+    async function loadEntry() {
+      entry = await StudyData.getEntry(targetUser, date);
+      renderRecordList();
+      document.getElementById('studiedContent').value = entry.studiedContent || '';
+      document.getElementById('issues').value = entry.issues || '';
+      document.getElementById('question').value = entry.question || '';
+      document.getElementById('other').value = entry.other || '';
+    }
+
+    if (!readonly) {
+      document.getElementById('addRecordBtn').addEventListener('click', async () => {
+        const subject = document.getElementById('subjectSelect').value;
+        const minutesInput = document.getElementById('minutesInput');
+        const minutes = Number(minutesInput.value);
+        if (!subject || !minutes || minutes <= 0) {
+          alert('科目と分数を正しく入力してください');
+          return;
+        }
+        await StudyData.addRecordToEntry(targetUser, date, { subject, minutes });
+        minutesInput.value = '';
+        entry = await StudyData.getEntry(targetUser, date);
+        renderRecordList();
+      });
+
+      document.getElementById('saveBtn').addEventListener('click', async () => {
+        const studiedContent = document.getElementById('studiedContent').value;
+        const issues = document.getElementById('issues').value;
+        const question = document.getElementById('question').value;
+        const other = document.getElementById('other').value;
+        await StudyData.saveEntry(targetUser, date, { studiedContent, issues, question, other });
+        alert('保存しました');
+      });
+    }
+
+    await loadSubjects();
+    await loadEntry();
+  }
+</script>
+
+</body>
+</html>

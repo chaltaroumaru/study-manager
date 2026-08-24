@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設定 | 勉強状況管理アプリ</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="app-header">
+  <div class="app-title">勉強状況管理アプリ</div>
+  <nav class="app-nav" id="appNav">
+    <a href="calendar.html">カレンダー</a>
+    <a href="record.html" id="navRecord">記録する</a>
+    <a href="settings.html" class="active">設定</a>
+  </nav>
+  <div class="app-user">
+    <span id="currentUserName"></span>
+    <a href="#" id="logoutLink">ログアウト</a>
+  </div>
+</header>
+
+<main class="container">
+  <h1>設定</h1>
+
+  <section class="card">
+    <h2>科目のカスタマイズ</h2>
+    <p class="muted">学習塾や大学など、用途に合わせて科目を自由に追加・削除できます。</p>
+
+    <ul class="list" id="subjectList"></ul>
+
+    <label for="newSubjectInput">新しい科目を追加</label>
+    <div style="display:flex; gap:8px;">
+      <input type="text" id="newSubjectInput" placeholder="例: 情報、小論文 など">
+      <button type="button" id="addSubjectBtn" style="margin-top:0; white-space:nowrap;">追加</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>目標時間の設定</h2>
+    <p class="muted">1日あたりの目標学習時間(分)を設定できます。</p>
+
+    <label for="goalInput">1日の目標学習時間(分)</label>
+    <input type="number" id="goalInput" min="1" step="1">
+    <button type="button" id="saveGoalBtn">保存する</button>
+    <span id="goalSavedMsg" class="tag" style="display:none; margin-left:10px;">保存しました</span>
+  </section>
+
+  <section class="card" id="teacherSection" style="display:none;">
+    <h2>担当教員の変更</h2>
+    <p class="muted">選び直すと、その先生に学習記録が共有されます。</p>
+
+    <label for="teacherSelect">担当教員</label>
+    <select id="teacherSelect"></select>
+    <button type="button" id="changeTeacherBtn">変更する</button>
+    <span id="teacherSavedMsg" class="tag" style="display:none; margin-left:10px;">変更しました</span>
+  </section>
+</main>
+
+<script type="module">
+  import { StudyData } from './js/data.js';
+  await StudyData.ready;
+
+  const currentUser = StudyData.getCurrentUser();
+  if (!currentUser) {
+    window.location.href = 'index.html';
+  }
+
+  const userData = await StudyData.getUserData(currentUser);
+
+  document.getElementById('currentUserName').textContent = currentUser;
+  document.getElementById('logoutLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    StudyData.logout();
+    window.location.href = 'index.html';
+  });
+
+  // 先生の場合は「記録する」の代わりに「担当生徒」を表示
+  if (userData && userData.role === 'teacher') {
+    const navRecord = document.getElementById('navRecord');
+    navRecord.textContent = '担当生徒';
+    navRecord.setAttribute('href', 'teacher.html');
+  }
+
+  const subjectListEl = document.getElementById('subjectList');
+  const newSubjectInput = document.getElementById('newSubjectInput');
+  const addSubjectBtn = document.getElementById('addSubjectBtn');
+  const goalInput = document.getElementById('goalInput');
+  const saveGoalBtn = document.getElementById('saveGoalBtn');
+  const goalSavedMsg = document.getElementById('goalSavedMsg');
+
+  async function renderSubjects() {
+    const subjects = await StudyData.getSubjects(currentUser);
+    subjectListEl.innerHTML = '';
+    subjects.forEach((subject) => {
+      const li = document.createElement('li');
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'tag';
+      nameSpan.textContent = subject;
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'danger';
+      removeBtn.style.marginTop = '0';
+      removeBtn.textContent = '削除';
+      removeBtn.addEventListener('click', async () => {
+        await StudyData.removeSubject(currentUser, subject);
+        renderSubjects();
+      });
+
+      li.appendChild(nameSpan);
+      li.appendChild(removeBtn);
+      subjectListEl.appendChild(li);
+    });
+  }
+
+  addSubjectBtn.addEventListener('click', async () => {
+    const name = newSubjectInput.value.trim();
+    if (!name) {
+      return;
+    }
+    await StudyData.addSubject(currentUser, name);
+    newSubjectInput.value = '';
+    renderSubjects();
+  });
+
+  newSubjectInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      addSubjectBtn.click();
+    }
+  });
+
+  goalInput.value = await StudyData.getGoal(currentUser);
+
+  saveGoalBtn.addEventListener('click', async () => {
+    const minutes = parseInt(goalInput.value, 10);
+    if (!minutes || minutes <= 0) {
+      return;
+    }
+    await StudyData.setGoal(currentUser, minutes);
+    goalSavedMsg.style.display = 'inline-block';
+    setTimeout(() => {
+      goalSavedMsg.style.display = 'none';
+    }, 1500);
+  });
+
+  // 担当教員の変更(生徒のみ表示)
+  if (userData && userData.role === 'student') {
+    const teacherSection = document.getElementById('teacherSection');
+    const teacherSelect = document.getElementById('teacherSelect');
+    const changeTeacherBtn = document.getElementById('changeTeacherBtn');
+    const teacherSavedMsg = document.getElementById('teacherSavedMsg');
+
+    teacherSection.style.display = 'block';
+
+    const teachers = await StudyData.listTeachers();
+    teacherSelect.innerHTML = '';
+    if (teachers.length === 0) {
+      teacherSelect.innerHTML = '<option value="">(まだ先生が登録されていません)</option>';
+    } else {
+      teachers.forEach((t) => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        if (t === userData.teacherName) {
+          opt.selected = true;
+        }
+        teacherSelect.appendChild(opt);
+      });
+    }
+
+    changeTeacherBtn.addEventListener('click', async () => {
+      const teacherName = teacherSelect.value;
+      if (!teacherName) {
+        return;
+      }
+      await StudyData.setTeacher(currentUser, teacherName);
+      teacherSavedMsg.style.display = 'inline-block';
+      setTimeout(() => {
+        teacherSavedMsg.style.display = 'none';
+      }, 1500);
+    });
+  }
+
+  renderSubjects();
+</script>
+</body>
+</html>

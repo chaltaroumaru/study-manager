@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>カレンダー | 勉強状況管理アプリ</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-title">勉強状況管理アプリ</div>
+  <nav class="app-nav" id="appNav"></nav>
+  <div class="app-user">
+    <span id="currentUserName"></span>
+    <a href="#" id="logoutLink">ログアウト</a>
+  </div>
+</header>
+
+<main class="container">
+
+  <div class="card" id="viewingBanner" style="display:none; background:#eef2ff;"></div>
+
+  <div class="card">
+    <h1>カレンダー</h1>
+    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:140px;">
+        <div class="muted">合計学習時間</div>
+        <div style="font-size:1.6rem; font-weight:700;" id="totalMinutes">-</div>
+      </div>
+      <div style="flex:1; min-width:140px;">
+        <div class="muted">連続記録日数</div>
+        <div style="font-size:1.6rem; font-weight:700;" id="streakDays">-</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <button class="secondary" id="prevMonthBtn" style="margin-top:0;">&larr; 前月</button>
+      <h2 id="monthLabel" style="margin:0;"></h2>
+      <button class="secondary" id="nextMonthBtn" style="margin-top:0;">次月 &rarr;</button>
+    </div>
+    <div id="calendarGrid" style="display:grid; grid-template-columns: repeat(7, 1fr); gap:4px;"></div>
+  </div>
+
+</main>
+
+<script type="module">
+  import { StudyData } from './js/data.js';
+  await StudyData.ready;
+
+  const params = new URLSearchParams(window.location.search);
+  const studentParam = params.get('student');
+  const isViewingOther = !!studentParam;
+
+  const currentUser = StudyData.getCurrentUser();
+
+  // studentパラメータが無いときだけ、通常のログインチェックを行う
+  if (!isViewingOther && !currentUser) {
+    window.location.href = 'index.html';
+  }
+
+  const targetUser = isViewingOther ? studentParam : currentUser;
+
+  // ヘッダー(ナビ・ユーザー名・ログアウト)の組み立て
+  if (currentUser) {
+    document.getElementById('currentUserName').textContent = currentUser;
+    const userData = await StudyData.getUserData(currentUser);
+    const nav = document.getElementById('appNav');
+    const role = userData ? userData.role : null;
+    nav.innerHTML = `
+      <a href="calendar.html" class="active">カレンダー</a>
+      ${role === 'teacher'
+        ? '<a href="teacher.html">担当生徒</a>'
+        : '<a href="record.html">記録する</a>'}
+      <a href="settings.html">設定</a>
+    `;
+  }
+
+  document.getElementById('logoutLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    StudyData.logout();
+    window.location.href = 'index.html';
+  });
+
+  if (isViewingOther) {
+    const banner = document.getElementById('viewingBanner');
+    banner.style.display = 'block';
+    banner.textContent = `${studentParam} さんのカレンダーを閲覧中`;
+  }
+
+  // サマリー(合計時間・連続日数)
+  const entries = await StudyData.getAllEntries(targetUser);
+  document.getElementById('totalMinutes').textContent = `${StudyData.getTotalMinutes(entries)}分`;
+  document.getElementById('streakDays').textContent = `${StudyData.calcStreak(entries)}日`;
+  const minutesByDate = StudyData.getMinutesByDate(entries);
+
+  // カレンダー本体
+  const today = new Date();
+  let viewYear = today.getFullYear();
+  let viewMonth = today.getMonth(); // 0-11
+
+  const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+  function toDateStr(y, m, d) {
+    const mm = String(m + 1).padStart(2, '0');
+    const dd = String(d).padStart(2, '0');
+    return `${y}-${mm}-${dd}`;
+  }
+
+  function goToRecord(dateStr) {
+    let url = `record.html?date=${dateStr}`;
+    if (isViewingOther) {
+      url += `&student=${encodeURIComponent(studentParam)}&readonly=1`;
+    }
+    window.location.href = url;
+  }
+
+  function renderCalendar() {
+    document.getElementById('monthLabel').textContent = `${viewYear}年 ${viewMonth + 1}月`;
+
+    const grid = document.getElementById('calendarGrid');
+    grid.innerHTML = '';
+
+    WEEKDAYS.forEach((w) => {
+      const cell = document.createElement('div');
+      cell.textContent = w;
+      cell.style.textAlign = 'center';
+      cell.style.fontWeight = '700';
+      cell.style.color = 'var(--color-muted)';
+      cell.style.padding = '4px 0';
+      grid.appendChild(cell);
+    });
+
+    const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const todayStr = StudyData.todayStr();
+
+    for (let i = 0; i < firstDayOfWeek; i++) {
+      grid.appendChild(document.createElement('div'));
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = toDateStr(viewYear, viewMonth, d);
+      const minutes = minutesByDate[dateStr];
+      const hasRecord = !!minutes;
+
+      const cell = document.createElement('div');
+      cell.style.border = '1px solid var(--color-border)';
+      cell.style.borderRadius = 'var(--radius)';
+      cell.style.padding = '6px 4px';
+      cell.style.minHeight = '56px';
+      cell.style.cursor = 'pointer';
+      cell.style.background = hasRecord ? '#eef2ff' : 'var(--color-surface)';
+      if (dateStr === todayStr) {
+        cell.style.border = '2px solid var(--color-primary)';
+      }
+
+      const dayNum = document.createElement('div');
+      dayNum.textContent = d;
+      dayNum.style.fontWeight = '600';
+      cell.appendChild(dayNum);
+
+      if (hasRecord) {
+        const tag = document.createElement('div');
+        tag.className = 'tag';
+        tag.style.marginTop = '4px';
+        tag.textContent = `${minutes}分`;
+        cell.appendChild(tag);
+      }
+
+      cell.addEventListener('click', () => goToRecord(dateStr));
+      grid.appendChild(cell);
+    }
+  }
+
+  document.getElementById('prevMonthBtn').addEventListener('click', () => {
+    viewMonth -= 1;
+    if (viewMonth < 0) {
+      viewMonth = 11;
+      viewYear -= 1;
+    }
+    renderCalendar();
+  });
+
+  document.getElementById('nextMonthBtn').addEventListener('click', () => {
+    viewMonth += 1;
+    if (viewMonth > 11) {
+      viewMonth = 0;
+      viewYear += 1;
+    }
+    renderCalendar();
+  });
+
+  renderCalendar();
+</script>
+
+</body>
+</html>

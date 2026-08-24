@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>担当生徒 | 勉強状況管理アプリ</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-title">勉強状況管理アプリ</div>
+  <nav class="app-nav">
+    <a href="calendar.html">カレンダー</a>
+    <a href="teacher.html" class="active">担当生徒</a>
+    <a href="settings.html">設定</a>
+  </nav>
+  <div class="app-user">
+    <span id="currentUserName"></span>
+    <a href="#" id="logoutLink">ログアウト</a>
+  </div>
+</header>
+
+<main class="container">
+  <h1>担当生徒</h1>
+
+  <section class="card">
+    <p class="muted">生徒を選ぶとその生徒のカレンダー・学習記録を閲覧できます。</p>
+    <div id="studentList" class="user-select-list"></div>
+    <p id="noStudentMsg" class="muted" style="display:none;">
+      まだ担当の生徒がいません。生徒側で担当教員としてあなたを選んでもらってください。
+    </p>
+  </section>
+</main>
+
+<script type="module">
+  import { StudyData } from './js/data.js';
+  await StudyData.ready;
+
+  const currentUser = StudyData.getCurrentUser();
+  if (!currentUser) {
+    window.location.href = 'index.html';
+  }
+
+  document.getElementById('currentUserName').textContent = currentUser;
+  document.getElementById('logoutLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    StudyData.logout();
+    window.location.href = 'index.html';
+  });
+
+  const studentListEl = document.getElementById('studentList');
+  const noStudentMsg = document.getElementById('noStudentMsg');
+
+  const students = await StudyData.listStudentsOf(currentUser);
+
+  if (students.length === 0) {
+    noStudentMsg.style.display = 'block';
+  } else {
+    students.forEach((name) => {
+      const btn = document.createElement('button');
+      btn.textContent = name;
+      btn.addEventListener('click', () => {
+        window.location.href = `calendar.html?student=${encodeURIComponent(name)}`;
+      });
+      studentListEl.appendChild(btn);
+    });
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>勉強状況管理アプリ</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-title">勉強状況管理アプリ</div>
+</header>
+
+<main class="container">
+
+  <div class="card" id="loginCard">
+    <h1>ユーザーを選んでください</h1>
+    <p class="muted">名前を選ぶだけの簡易ログインです。パスワードはありません。</p>
+
+    <div class="user-select-list" id="userList"></div>
+
+    <h2>新しいユーザーを作る</h2>
+    <label for="newUserName">名前</label>
+    <input type="text" id="newUserName" placeholder="例: たろう">
+    <button id="createUserBtn">このユーザーで始める</button>
+  </div>
+
+  <div class="card" id="roleCard" style="display:none;">
+    <h1><span id="roleUserName"></span>さんの役割を選んでください</h1>
+    <p class="muted">最初に1回だけ設定します(あとから変更はできません)。</p>
+    <button id="roleTeacherBtn">先生として使う</button>
+    <button id="roleStudentBtn" class="secondary">生徒として使う</button>
+  </div>
+
+  <div class="card" id="teacherSelectCard" style="display:none;">
+    <h1>担当の先生を選んでください</h1>
+    <p class="muted">選ぶとその先生に学習記録が共有されます(設定画面であとから変更できます)。</p>
+    <label for="teacherSelect">担当教員</label>
+    <select id="teacherSelect"></select>
+    <button id="confirmTeacherBtn">この先生に決める</button>
+    <button id="skipTeacherBtn" class="secondary">あとで決める</button>
+  </div>
+
+</main>
+
+<script type="module">
+  import { StudyData } from './js/data.js';
+  await StudyData.ready;
+
+  const loginCard = document.getElementById('loginCard');
+  const roleCard = document.getElementById('roleCard');
+  const teacherSelectCard = document.getElementById('teacherSelectCard');
+
+  async function renderUserList() {
+    const listEl = document.getElementById('userList');
+    // Firestoreには「全ユーザー一覧」を取る手段を用意していないため、
+    // 「これまでこの端末でログインしたことがある名前」をlocalStorageの履歴から出す。
+    const known = JSON.parse(localStorage.getItem('studyTrackerKnownUsers') || '[]');
+    listEl.innerHTML = '';
+    if (known.length === 0) {
+      listEl.innerHTML = '<p class="muted">まだユーザーがいません。下のフォームから作成してください。</p>';
+      return;
+    }
+    known.forEach((name) => {
+      const btn = document.createElement('button');
+      btn.textContent = name;
+      btn.addEventListener('click', () => selectUser(name));
+      listEl.appendChild(btn);
+    });
+  }
+
+  function rememberUser(name) {
+    const known = JSON.parse(localStorage.getItem('studyTrackerKnownUsers') || '[]');
+    if (!known.includes(name)) {
+      known.push(name);
+      localStorage.setItem('studyTrackerKnownUsers', JSON.stringify(known));
+    }
+  }
+
+  async function selectUser(name) {
+    await StudyData.loginAs(name);
+    rememberUser(name);
+    const userData = await StudyData.getUserData(name);
+    if (userData.role === 'teacher') {
+      window.location.href = 'teacher.html';
+    } else if (userData.role === 'student') {
+      window.location.href = 'calendar.html';
+    } else {
+      showRoleCard(name);
+    }
+  }
+
+  function showRoleCard(name) {
+    loginCard.style.display = 'none';
+    teacherSelectCard.style.display = 'none';
+    roleCard.style.display = 'block';
+    document.getElementById('roleUserName').textContent = name;
+
+    document.getElementById('roleTeacherBtn').onclick = async () => {
+      await StudyData.setRole(name, 'teacher');
+      window.location.href = 'teacher.html';
+    };
+    document.getElementById('roleStudentBtn').onclick = async () => {
+      await StudyData.setRole(name, 'student');
+      showTeacherSelectCard(name);
+    };
+  }
+
+  async function showTeacherSelectCard(name) {
+    roleCard.style.display = 'none';
+    teacherSelectCard.style.display = 'block';
+
+    const select = document.getElementById('teacherSelect');
+    select.innerHTML = '';
+    const teachers = await StudyData.listTeachers();
+    if (teachers.length === 0) {
+      select.innerHTML = '<option value="">(まだ先生が登録されていません)</option>';
+    } else {
+      teachers.forEach((t) => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        select.appendChild(opt);
+      });
+    }
+
+    document.getElementById('confirmTeacherBtn').onclick = async () => {
+      const teacherName = select.value;
+      if (teacherName) {
+        await StudyData.setTeacher(name, teacherName);
+      }
+      window.location.href = 'calendar.html';
+    };
+    document.getElementById('skipTeacherBtn').onclick = () => {
+      window.location.href = 'calendar.html';
+    };
+  }
+
+  document.getElementById('createUserBtn').addEventListener('click', () => {
+    const input = document.getElementById('newUserName');
+    const name = input.value.trim();
+    if (!name) {
+      alert('名前を入力してください');
+      return;
+    }
+    selectUser(name);
+  });
+
+  renderUserList();
+</script>
+
+</body>
+</html>
