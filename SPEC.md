@@ -71,6 +71,8 @@ users/{name}/entries/{date}       … date は "YYYY-MM-DD"。1日1ドキュメ�
 - `StudyData.getEntry(name, date)` → その日のエントリー(なければ空の初期値を返す。保存はされない)
 - `StudyData.saveEntry(name, date, partial)` → 部分更新でその日のエントリーを保存
 - `StudyData.addRecordToEntry(name, date, {subject, minutes})` → その日の学習時間ログに1件追加
+- `StudyData.updateRecordInEntry(name, date, index, {subject, minutes})` → 指定indexのログを上書き
+- `StudyData.removeRecordFromEntry(name, date, index)` → 指定indexのログを削除
 - `StudyData.listEntryDates(name)` → エントリーが存在する日付一覧(新しい順)
 - `StudyData.getAllEntries(name)` → 全エントリー配列
 - `StudyData.getTotalMinutes(entries)` / `getMinutesByDate(entries)` / `calcStreak(entries)` — 集計ユーティリティ(引数は`getAllEntries`の結果)

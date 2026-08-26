@@ -54,6 +54,7 @@
         <label for="minutesInput">分数</label>
         <input type="number" id="minutesInput" min="1" placeholder="例: 30">
         <button id="addRecordBtn">追加</button>
+        <button id="cancelEditBtn" class="secondary" style="display:none;">キャンセル</button>
       </div>
     </div>
 
@@ -159,6 +160,8 @@
     // エントリー読み込み・表示
     let entry;
 
+    let editingIndex = null;
+
     function renderRecordList() {
       const list = document.getElementById('recordList');
       list.innerHTML = '';
@@ -170,17 +173,72 @@
         list.appendChild(li);
         return;
       }
-      records.forEach((r) => {
+      records.forEach((r, index) => {
         const li = document.createElement('li');
+
+        const left = document.createElement('span');
         const subjectSpan = document.createElement('span');
         subjectSpan.className = 'tag';
         subjectSpan.textContent = r.subject;
         const minutesSpan = document.createElement('span');
-        minutesSpan.textContent = r.minutes + '分';
-        li.appendChild(subjectSpan);
-        li.appendChild(minutesSpan);
+        minutesSpan.textContent = ' ' + r.minutes + '分';
+        left.appendChild(subjectSpan);
+        left.appendChild(minutesSpan);
+        li.appendChild(left);
+
+        if (!readonly) {
+          const actions = document.createElement('span');
+
+          const editBtn = document.createElement('button');
+          editBtn.type = 'button';
+          editBtn.className = 'secondary';
+          editBtn.textContent = '編集';
+          editBtn.style.marginTop = '0';
+          editBtn.addEventListener('click', () => startEdit(index));
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.type = 'button';
+          deleteBtn.className = 'danger';
+          deleteBtn.textContent = '削除';
+          deleteBtn.style.marginTop = '0';
+          deleteBtn.style.marginLeft = '6px';
+          deleteBtn.addEventListener('click', () => deleteRecord(index));
+
+          actions.appendChild(editBtn);
+          actions.appendChild(deleteBtn);
+          li.appendChild(actions);
+        }
+
         list.appendChild(li);
       });
+    }
+
+    function startEdit(index) {
+      const r = entry.records[index];
+      editingIndex = index;
+      document.getElementById('subjectSelect').value = r.subject;
+      document.getElementById('minutesInput').value = r.minutes;
+      document.getElementById('addRecordBtn').textContent = '更新する';
+      document.getElementById('cancelEditBtn').style.display = 'inline-block';
+    }
+
+    function cancelEdit() {
+      editingIndex = null;
+      document.getElementById('minutesInput').value = '';
+      document.getElementById('addRecordBtn').textContent = '追加';
+      document.getElementById('cancelEditBtn').style.display = 'none';
+    }
+
+    async function deleteRecord(index) {
+      if (!confirm('このログを削除しますか?')) {
+        return;
+      }
+      await StudyData.removeRecordFromEntry(targetUser, date, index);
+      if (editingIndex === index) {
+        cancelEdit();
+      }
+      entry = await StudyData.getEntry(targetUser, date);
+      renderRecordList();
     }
 
     async function loadEntry() {
@@ -201,11 +259,18 @@
           alert('科目と分数を正しく入力してください');
           return;
         }
-        await StudyData.addRecordToEntry(targetUser, date, { subject, minutes });
-        minutesInput.value = '';
+        if (editingIndex !== null) {
+          await StudyData.updateRecordInEntry(targetUser, date, editingIndex, { subject, minutes });
+          cancelEdit();
+        } else {
+          await StudyData.addRecordToEntry(targetUser, date, { subject, minutes });
+          minutesInput.value = '';
+        }
         entry = await StudyData.getEntry(targetUser, date);
         renderRecordList();
       });
+
+      document.getElementById('cancelEditBtn').addEventListener('click', cancelEdit);
 
       document.getElementById('saveBtn').addEventListener('click', async () => {
         const studiedContent = document.getElementById('studiedContent').value;

@@ -157,6 +157,19 @@ async function addRecordToEntry(name, date, record) {
   await saveEntry(name, date, { records });
 }
 
+async function updateRecordInEntry(name, date, index, record) {
+  const current = await getEntry(name, date);
+  const records = [...(current.records || [])];
+  records[index] = record;
+  await saveEntry(name, date, { records });
+}
+
+async function removeRecordFromEntry(name, date, index) {
+  const current = await getEntry(name, date);
+  const records = (current.records || []).filter((_, i) => i !== index);
+  await saveEntry(name, date, { records });
+}
+
 async function listEntryDates(name) {
   const snaps = await getDocs(collection(db, "users", name, "entries"));
   return snaps.docs.map((d) => d.id).sort().reverse();
@@ -220,6 +233,8 @@ export const StudyData = {
   getEntry,
   saveEntry,
   addRecordToEntry,
+  updateRecordInEntry,
+  removeRecordFromEntry,
   listEntryDates,
   getAllEntries,
   getTotalMinutes,
